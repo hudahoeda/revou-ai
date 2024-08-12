@@ -219,12 +219,12 @@ def verify_password(stored_password, provided_password):
 def save_chat_history(session_id, timestamp, username, student_id, message_object, run_object):
     try:
         data = {
-            "session_id": session_id,
-            "timestamp": timestamp,
-            "student_id": student_id,
-            "username": username,
-            "message_object": json.dumps(message_object),
-            "run_object": json.dumps(run_object)
+            "SessionID": session_id,
+            "Timestamp": timestamp,
+            "StudentID": student_id,
+            "Username": username,
+            "MessageObject": json.dumps(message_object),
+            "RunObject": json.dumps(run_object)
         }
         
         # Insert the data into the chat_history table
@@ -312,8 +312,8 @@ def run_stream(user_input, file, selected_assistant_id):
     
     # Save chat history after the stream is complete
     save_chat_history(
-        timestamp=timestamp_now
         session_id=st.session_state['session_id'],
+        timestamp=timestamp_now,
         username=st.session_state['username'],
         student_id=get_student_id(st.session_state['username']),
         message_object=last_assistant_message,
