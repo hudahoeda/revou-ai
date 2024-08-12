@@ -218,25 +218,36 @@ def verify_password(stored_password, provided_password):
 
 def save_chat_history(session_id, timestamp, username, student_id, message_object, run_object):
     try:
+        # Ensure both run_object and message_object are dictionaries
+        if not isinstance(run_object, dict):
+            raise ValueError("run_object must be a dictionary")
+        if not isinstance(message_object, dict):
+            raise ValueError("message_object must be a dictionary")
+
         data = {
             "SessionID": session_id,
             "Timestamp": timestamp,
             "StudentID": student_id,
             "Username": username,
-            "MessageObject": json.dumps(message_object),
-            "RunObject": json.dumps(run_object)
+            "MessageObject": message_object,  # Insert the dictionary directly
+            "RunObject": run_object  # Insert the dictionary directly
         }
         
-        # Insert the data into the chat_history table
-        response = supabase.table('chat_history').insert(data).execute()
+        # Insert the data into the chat_history table in Supabase
+        response = supabase.table('Chat_History').insert(data).execute()
         
-        if response.status_code == 201:
-            st.success("Chat history saved successfully!")
+        print(f"Response: {response}")
+        
+        if hasattr(response, 'data'):
+            print("Chat history saved successfully!")
+            print(f"Inserted data: {response.data}")
         else:
-            st.error(f"Failed to save chat history: {response.status_text}")
+            print(f"Failed to save chat history: {response}")
     except Exception as e:
-        st.error(f"Error saving chat history: {str(e)}")
-
+        print(f"Error saving chat history: {repr(e)}")
+        print(f"Error type: {type(e)}")
+        print(f"Error attributes: {dir(e)}")
+        print(f"Error dict: {e.__dict__}")
 
 def create_thread(content, file):
     return client.beta.threads.create()
@@ -281,6 +292,62 @@ def format_annotation(text):
     text_value += "\n\n" + "\n".join(citations)
     return text_value
 
+def convert_message_to_dict(message_object):
+    return {
+        "id": message_object.id,
+        "assistant_id": message_object.assistant_id,
+        "attachments": message_object.attachments,
+        "completed_at": message_object.completed_at,
+        "content": [{"text": block.text.value, "type": block.type} for block in message_object.content],
+        "created_at": message_object.created_at,
+        "incomplete_at": message_object.incomplete_at,
+        "incomplete_details": message_object.incomplete_details,
+        "metadata": message_object.metadata,
+        "object": message_object.object,
+        "role": message_object.role,
+        "run_id": message_object.run_id,
+        "status": message_object.status,
+        "thread_id": message_object.thread_id
+    }
+
+def convert_run_to_dict(run_object):
+    return {
+        "id": run_object.id,
+        "assistant_id": run_object.assistant_id,
+        "cancelled_at": run_object.cancelled_at,
+        "completed_at": run_object.completed_at,
+        "created_at": run_object.created_at,
+        "expires_at": run_object.expires_at,
+        "failed_at": run_object.failed_at,
+        "incomplete_details": run_object.incomplete_details,
+        "instructions": run_object.instructions,
+        "last_error": run_object.last_error,
+        "max_completion_tokens": run_object.max_completion_tokens,
+        "max_prompt_tokens": run_object.max_prompt_tokens,
+        "metadata": run_object.metadata,
+        "model": run_object.model,
+        "object": run_object.object,
+        "parallel_tool_calls": run_object.parallel_tool_calls,
+        "required_action": run_object.required_action,
+        "response_format": run_object.response_format,
+        "started_at": run_object.started_at,
+        "status": run_object.status,
+        "thread_id": run_object.thread_id,
+        "tool_choice": run_object.tool_choice,
+        "tools": [{"type": tool.type, "file_search": tool.file_search} for tool in run_object.tools],
+        "truncation_strategy": {
+            "type": run_object.truncation_strategy.type,
+            "last_messages": run_object.truncation_strategy.last_messages
+        },
+        "usage": {
+            "completion_tokens": run_object.usage.completion_tokens,
+            "prompt_tokens": run_object.usage.prompt_tokens,
+            "total_tokens": run_object.usage.total_tokens
+        },
+        "temperature": run_object.temperature,
+        "top_p": run_object.top_p,
+        "tool_resources": run_object.tool_resources
+    }
 
 def run_stream(user_input, file, selected_assistant_id):
     if "thread" not in st.session_state:
@@ -304,21 +371,22 @@ def run_stream(user_input, file, selected_assistant_id):
 
     # Fetch the run details using the run_id
     run_details = client.beta.threads.runs.retrieve(thread_id=st.session_state.thread.id, run_id=run_id)
+    run_object = convert_run_to_dict(run_details)
+    print(run_object)
 
     # Fetch the last message object
     last_assistant_message = client.beta.threads.messages.list(thread_id=st.session_state.thread.id).data[0]
+    message_object = convert_message_to_dict(last_assistant_message)
+    print(message_object)
 
     timestamp_now = int(time.time())
-    
-    # Save chat history after the stream is complete
-    save_chat_history(
-        session_id=st.session_state['session_id'],
-        timestamp=timestamp_now,
-        username=st.session_state['username'],
-        student_id=get_student_id(st.session_state['username']),
-        message_object=last_assistant_message,
-        run_object=run_details
-    )
+
+    save_chat_history(session_id = st.session_state.session_id, 
+                      timestamp = timestamp_now, 
+                      username = st.session_state.username, 
+                      student_id= st.session_state.student_id, 
+                      message_object = message_object, 
+                      run_object = run_object)
 
 def handle_uploaded_file(uploaded_file):
     file = client.files.create(file=uploaded_file, purpose="assistants")
