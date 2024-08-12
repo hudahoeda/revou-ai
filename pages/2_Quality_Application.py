@@ -13,7 +13,6 @@ import streamlit_authenticator as stauth
 from pyairtable import Api
 import time
 import uuid
-import supabase
 from supabase import create_client, Client
 
 SUPABASE_URL = os.getenv("SUPABASE_URL")
@@ -194,27 +193,30 @@ def generate_session_id():
 def get_user(username):
     try:
         response = supabase.table('Users').select('*').eq('Username', username).execute()
-        user = response.data[0] if response.data else None
-        return user
+        if response.data:
+            return response.data[0]
+        else:
+            print(f"No user found with username: {username}")
+            return None
     except Exception as e:
-        st.error(f"Error getting user: {str(e)}")
+        print(f"Error getting user: {str(e)}")
         return None
 
 def get_student_id(username):
     try:
-        response = client.table('Users').select('StudentID').eq('Username', username).single().execute()
+        response = supabase.table('Users').select('StudentID').eq('Username', username).single().execute()
         if response.data:
             return response.data.get('StudentID')
         else:
             return None
     except Exception as e:
-        st.error(f"Error getting user: {str(e)}")
+        print(f"Error getting user: {str(e)}")
         return None
 
 def verify_password(stored_password, provided_password):
     return stored_password == provided_password
 
-def save_chat_history(session_id, username, student_id, message_object, run_object):
+def save_chat_history(session_id, timestamp, username, student_id, message_object, run_object):
     try:
         data = {
             "session_id": session_id,
@@ -226,7 +228,7 @@ def save_chat_history(session_id, username, student_id, message_object, run_obje
         }
         
         # Insert the data into the chat_history table
-        response = client.table('chat_history').insert(data).execute()
+        response = supabase.table('chat_history').insert(data).execute()
         
         if response.status_code == 201:
             st.success("Chat history saved successfully!")
@@ -305,10 +307,12 @@ def run_stream(user_input, file, selected_assistant_id):
 
     # Fetch the last message object
     last_assistant_message = client.beta.threads.messages.list(thread_id=st.session_state.thread.id).data[0]
+
+    timestamp_now = int(time.time())
     
     # Save chat history after the stream is complete
     save_chat_history(
-        timestamp=int(time.time()),
+        timestamp=timestamp_now
         session_id=st.session_state['session_id'],
         username=st.session_state['username'],
         student_id=get_student_id(st.session_state['username']),
@@ -383,36 +387,38 @@ def load_chat_screen(assistant_id, assistant_title):
 
 def login():
     st.markdown(
-    """
-    <style>
-    .css-1jc7ptx, .e1ewe7hr3, .viewerBadge_container__1QSob,
-    .styles_viewerBadge__1yB5_, .viewerBadge_link__1S137,
-    .viewerBadge_text__1JaDK {
-        display: none;
-    }
-    </style>
-    """,
-    unsafe_allow_html=True
+        """
+        <style>
+        .css-1jc7ptx, .e1ewe7hr3, .viewerBadge_container__1QSob,
+        .styles_viewerBadge__1yB5_, .viewerBadge_link__1S137,
+        .viewerBadge_text__1JaDK {
+            display: none;
+        }
+        </style>
+        """,
+        unsafe_allow_html=True
     )
     st.title("💬 RevoU AI Coach")
-    st.text("Enter your credential")
-    username = st.text_input("Username")
-    password = st.text_input("Password", type="password")
-    if st.button("Login"):
+    st.text("Enter your credentials")
+    
+    with st.form("login_form"):
+        username = st.text_input("Username")
+        password = st.text_input("Password", type="password")
+        submit_button = st.form_submit_button("Login")
+
+    if submit_button:
         user = get_user(username)
-        if user:
-            if 'Password' in user:
-                if verify_password(user['Password'], password):
-                    st.session_state['logged_in'] = True
-                    st.session_state['username'] = username
-                    st.success("Login successful!")
-                    st.rerun()
-                else:
-                    st.error("Invalid password")
+        if user and 'Password' in user:
+            if verify_password(user['Password'], password):
+                st.session_state['logged_in'] = True
+                st.session_state['username'] = username
+                st.session_state['student_id'] = user.get('StudentID')
+                st.success("Login successful!")
+                st.rerun()
             else:
-                st.error("User record does not contain a password field")
+                st.error("Invalid username or password")
         else:
-            st.error("User not found")
+            st.error("Invalid username or password")
 
 
 
