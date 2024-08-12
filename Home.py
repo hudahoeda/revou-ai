@@ -216,7 +216,7 @@ def get_student_id(username):
 def verify_password(stored_password, provided_password):
     return stored_password == provided_password
 
-def save_chat_history(session_id, timestamp, username, student_id, message_object, run_object):
+def save_chat_history(session_id, timestamp, username, student_id, user_input, message_object, run_object):
     try:
         # Ensure both run_object and message_object are dictionaries
         if not isinstance(run_object, dict):
@@ -229,6 +229,7 @@ def save_chat_history(session_id, timestamp, username, student_id, message_objec
             "Timestamp": timestamp,
             "StudentID": student_id,
             "Username": username,
+            "UserInput": user_input,
             "MessageObject": message_object,  # Insert the dictionary directly
             "RunObject": run_object  # Insert the dictionary directly
         }
@@ -372,22 +373,21 @@ def run_stream(user_input, file, selected_assistant_id):
     # Fetch the run details using the run_id
     run_details = client.beta.threads.runs.retrieve(thread_id=st.session_state.thread.id, run_id=run_id)
     run_object = convert_run_to_dict(run_details)
-    print(run_object)
 
     # Fetch the last message object
     last_assistant_message = client.beta.threads.messages.list(thread_id=st.session_state.thread.id).data[0]
     message_object = convert_message_to_dict(last_assistant_message)
-    print(message_object)
 
     timestamp_now = int(time.time())
 
     save_chat_history(session_id = st.session_state.session_id, 
                       timestamp = timestamp_now, 
                       username = st.session_state.username, 
-                      student_id= st.session_state.student_id, 
+                      student_id= st.session_state.student_id,
+                      user_input = user_input, 
                       message_object = message_object, 
                       run_object = run_object)
-
+    
 def handle_uploaded_file(uploaded_file):
     file = client.files.create(file=uploaded_file, purpose="assistants")
     return file
