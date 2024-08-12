@@ -13,6 +13,12 @@ import streamlit_authenticator as stauth
 from pyairtable import Api
 import time
 import uuid
+import supabase
+from supabase import create_client, Client
+
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # Add these to your existing environment variable loading
 BASE_ID = os.environ.get('BASE_ID')
@@ -187,19 +193,18 @@ def generate_session_id():
 
 def get_user(username):
     try:
-        table = airtable.table(BASE_ID, USER_TABLE_NAME)
-        records = table.all(formula=f"{{Username}} = '{username}'")
-        return records[0] if records else None
+        response = supabase.table('Users').select('*').eq('Username', username).execute()
+        user = response.data[0] if response.data else None
+        return user
     except Exception as e:
         st.error(f"Error getting user: {str(e)}")
         return None
 
 def get_student_id(username):
     try:
-        table = airtable.table(BASE_ID, USER_TABLE_NAME)
-        records = table.all(formula=f"{{Username}} = '{username}'")
-        if records:
-            return records[0]['fields'].get('StudentID')
+        response = client.table('Users').select('StudentID').eq('Username', username).single().execute()
+        if response.data:
+            return response.data.get('StudentID')
         else:
             return None
     except Exception as e:
@@ -209,22 +214,24 @@ def get_student_id(username):
 def verify_password(stored_password, provided_password):
     return stored_password == provided_password
 
-def save_chat_history(session_id, username, student_id, user_input, response, assistant_id, model, prompt_tokens, completion_tokens, total_tokens):
+def save_chat_history(session_id, username, student_id, message_object, run_object):
     try:
-        table = airtable.table(BASE_ID, CHAT_TABLE_NAME)
-        table.create({
-            "SessionID": session_id,
-            "Timestamp": int(time.time()),
-            "StudentID": student_id,
-            "Username": username,
-            "UserInput": user_input,
-            "Response": response,
-            "AssistantID" : assistant_id,
-            "Model": model,
-            "PromptTokens": prompt_tokens,
-            "CompletionTokens": completion_tokens,
-            "TotalTokens": total_tokens
-        })
+        data = {
+            "session_id": session_id,
+            "timestamp": timestamp,
+            "student_id": student_id,
+            "username": username,
+            "message_object": json.dumps(message_object),
+            "run_object": json.dumps(run_object)
+        }
+        
+        # Insert the data into the chat_history table
+        response = client.table('chat_history').insert(data).execute()
+        
+        if response.status_code == 201:
+            st.success("Chat history saved successfully!")
+        else:
+            st.error(f"Failed to save chat history: {response.status_text}")
     except Exception as e:
         st.error(f"Error saving chat history: {str(e)}")
 
@@ -296,29 +303,17 @@ def run_stream(user_input, file, selected_assistant_id):
     # Fetch the run details using the run_id
     run_details = client.beta.threads.runs.retrieve(thread_id=st.session_state.thread.id, run_id=run_id)
 
-    #print(run_details)
-
-    # Extract the required details from the run object
-    assistant_id = run_details.assistant_id
-    model = run_details.model
-    prompt_tokens = run_details.usage.prompt_tokens
-    completion_tokens = run_details.usage.completion_tokens
-    total_tokens = run_details.usage.total_tokens
-
-    # Save chat history after the stream is complete
+    # Fetch the last message object
     last_assistant_message = client.beta.threads.messages.list(thread_id=st.session_state.thread.id).data[0]
     
+    # Save chat history after the stream is complete
     save_chat_history(
-        st.session_state['session_id'],
-        st.session_state['username'],
-        get_student_id(st.session_state['username']),
-        user_input,
-        last_assistant_message.content[0].text.value,
-        assistant_id,
-        model,
-        prompt_tokens,
-        completion_tokens,
-        total_tokens
+        timestamp=int(time.time()),
+        session_id=st.session_state['session_id'],
+        username=st.session_state['username'],
+        student_id=get_student_id(st.session_state['username']),
+        message_object=last_assistant_message,
+        run_object=run_details
     )
 
 def handle_uploaded_file(uploaded_file):
@@ -406,8 +401,8 @@ def login():
     if st.button("Login"):
         user = get_user(username)
         if user:
-            if 'Password' in user['fields']:
-                if verify_password(user['fields']['Password'], password):
+            if 'Password' in user:
+                if verify_password(user['Password'], password):
                     st.session_state['logged_in'] = True
                     st.session_state['username'] = username
                     st.success("Login successful!")
@@ -418,6 +413,7 @@ def login():
                 st.error("User record does not contain a password field")
         else:
             st.error("User not found")
+
 
 
 def main():
