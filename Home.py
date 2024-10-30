@@ -529,7 +529,7 @@ def main():
         pg = st.navigation({
             "Home" : [message],
             "Personal Branding Discovery": [professional_value_dicoveries, relevance_experiences_discovery,experience_detail_discovery],
-            "Assets Content Crafting": [about_me_summary_crafting, professionals_and_organizational_experience_crafting, project_crafting, CV_reviewer ],
+            "Assets Content Crafting": [about_me_summary_crafting, professionals_and_organizational_experience_crafting, project_crafting],
             "Quality Application Support": [assets_personalization_kit,professional_communication_kit],
             "Logout": [st.Page(logout, title="Logout", icon="🚪")]
         })
